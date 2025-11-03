@@ -34,7 +34,7 @@ public class ArrowUtil {
             case "int16" -> Types.MinorType.SMALLINT.getType();
             case "int32" -> Types.MinorType.INT.getType();
             case "int64", "int" -> Types.MinorType.BIGINT.getType();
-            case "unit8" -> Types.MinorType.UINT1.getType();
+            case "uint8" -> Types.MinorType.UINT1.getType();
             case "uint16" -> Types.MinorType.UINT2.getType();
             case "uint32" -> Types.MinorType.UINT4.getType();
             case "uint64" -> Types.MinorType.UINT8.getType();
