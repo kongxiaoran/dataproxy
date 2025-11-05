@@ -19,6 +19,7 @@ package org.secretflow.dataproxy.core.visitor;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.annotation.Nonnull;
+import java.sql.Time;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
@@ -87,7 +88,21 @@ public class IntegerValueVisitor implements ValueVisitor<Integer> {
 
     @Override
     public Integer visit(@Nonnull Date value) {
-        return (int) value.getTime();
+        // Handle java.sql.Time: Time32Vector needs milliseconds since midnight
+        if (value instanceof Time sqlTime) {
+            // java.sql.Time.getTime() returns milliseconds since Unix epoch
+            // But Time32Vector needs milliseconds since midnight of the day
+            // Convert to LocalTime then calculate milliseconds
+            return (int) (sqlTime.toLocalTime().toNanoOfDay() / 1_000_000);
+        }
+
+        // Handle java.sql.Date: DateDayVector needs days since 1970-01-01
+        if (value instanceof java.sql.Date sqlDate) {
+            return (int) sqlDate.toLocalDate().toEpochDay();
+        }
+
+        // For java.util.Date, assume it's a date type, convert milliseconds to days
+        return (int) (value.getTime() / (24 * 60 * 60 * 1000L));
     }
 
     @Override

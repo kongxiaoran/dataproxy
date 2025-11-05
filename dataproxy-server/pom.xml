@@ -56,6 +56,11 @@
         </dependency>
 
         <dependency>
+            <groupId>org.secretflow</groupId>
+            <artifactId>dataproxy-plugin-dameng</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>

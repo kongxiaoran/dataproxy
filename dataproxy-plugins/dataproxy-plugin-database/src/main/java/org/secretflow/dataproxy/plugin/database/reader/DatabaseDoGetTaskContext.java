@@ -58,7 +58,7 @@ public class DatabaseDoGetTaskContext implements AutoCloseable{
                 sender.putOver();
                 hasNext.set(false);
             } catch (InterruptedException e) {
-                log.error("read interrupted", e);
+                log.warn("Database read task interrupted for table {}", taskConfig.getContext().getTableName(), e);
                 Thread.currentThread().interrupt();
             }
         });
@@ -66,7 +66,7 @@ public class DatabaseDoGetTaskContext implements AutoCloseable{
 
     public void cancel() {
         if (readFuture != null && !readFuture.isDone()) {
-            log.info("cancel read task...");
+            log.debug("Cancelling read task for table {}", taskConfig.getContext().getTableName());
             readFuture.cancel(true);
         }
     }

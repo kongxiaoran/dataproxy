@@ -17,6 +17,7 @@
 package org.secretflow.dataproxy.core.visitor;
 
 import javax.annotation.Nonnull;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -63,6 +64,10 @@ public interface ValueVisitor<T> {
 
     default T visit(@Nonnull byte[] value) {
         throw new UnsupportedOperationException("byte[] not supported");
+    }
+
+    default T visit(@Nonnull BigDecimal value) {
+        throw new UnsupportedOperationException("BigDecimal not supported");
     }
 
     default T visit(@Nonnull Object value) {

@@ -16,12 +16,16 @@
 
 package org.secretflow.dataproxy.core.visitor;
 
+import lombok.extern.slf4j.Slf4j;
+
 import javax.annotation.Nonnull;
+import java.math.BigDecimal;
 
 /**
  * @author yuexie
  * @date 2024/11/1 20:25
  **/
+@Slf4j
 public class ByteValueVisitor implements ValueVisitor<Byte>{
 
     @Override
@@ -52,6 +56,42 @@ public class ByteValueVisitor implements ValueVisitor<Byte>{
     @Override
     public Byte visit(@Nonnull Double value) {
         return value.byteValue();
+    }
+
+    @Override
+    public Byte visit(@Nonnull String value) {
+        try {
+            return Byte.valueOf(value);
+        } catch (NumberFormatException e) {
+            log.warn("Failed to parse string '{}' as Byte, using 0", value);
+            return (byte) 0;
+        }
+    }
+
+    @Override
+    public Byte visit(@Nonnull BigDecimal value) {
+        return value.byteValue();
+    }
+
+    @Override
+    public Byte visit(@Nonnull Object value) {
+        // Directly Byte type, return directly
+        if (value instanceof Byte byteValue) {
+            return byteValue;
+        }
+        
+        // Number type (including BigDecimal, Integer, Long, Short, Float, Double, etc.)
+        if (value instanceof Number number) {
+            return number.byteValue();
+        }
+        
+        // String type, call dedicated visit(String) method
+        if (value instanceof String stringValue) {
+            return visit(stringValue);
+        }
+
+        // Other types: try to convert to string then parse
+        return visit(value.toString());
     }
 
 }

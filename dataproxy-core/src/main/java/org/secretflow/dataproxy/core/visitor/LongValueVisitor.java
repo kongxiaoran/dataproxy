@@ -19,12 +19,8 @@ package org.secretflow.dataproxy.core.visitor;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.annotation.Nonnull;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
+import java.sql.Time;
+import java.time.*;
 import java.util.Date;
 
 /**
@@ -50,6 +46,8 @@ public class LongValueVisitor implements ValueVisitor<Long> {
 
         if (value instanceof Long longValue) {
             return visit(longValue);
+        } else if (value instanceof Time sqlTime) {
+            return this.visit(sqlTime);
         } else if (value instanceof Date dateValue) {
             return this.visit(dateValue);
         } else if (value instanceof LocalDateTime localDateTime) {
@@ -102,7 +100,10 @@ public class LongValueVisitor implements ValueVisitor<Long> {
 
     @Override
     public Long visit(@Nonnull LocalDateTime value) {
-        return value.toInstant(ZoneOffset.of(ZoneId.systemDefault().getId())).toEpochMilli();
+        // LocalDateTime has no timezone information, treat it as local time in system default timezone.
+        // Use atZone() instead of toInstant(ZoneOffset.of(...)) because ZoneOffset.of() requires
+        // an offset (e.g., "+08:00"), cannot directly use zone ID
+        return value.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 
     @Override
@@ -114,5 +115,13 @@ public class LongValueVisitor implements ValueVisitor<Long> {
     public Long visit(@Nonnull Instant value) {
         log.debug("visit instant: {}", value.toEpochMilli());
         return value.toEpochMilli();
+    }
+
+    public Long visit(@Nonnull Time value) {
+        long nanosSinceMidnight = value.toLocalTime().toNanoOfDay();
+        long microsSinceMidnight = nanosSinceMidnight / 1_000;
+        log.debug("Converting java.sql.Time {} (toLocalTime: {}) to microseconds since midnight: {} (nanos: {})",
+                value, value.toLocalTime(), microsSinceMidnight, nanosSinceMidnight);
+        return microsSinceMidnight;
     }
 }

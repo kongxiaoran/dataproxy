@@ -81,11 +81,20 @@
         <system-stubs-jupiter.version>2.1.7</system-stubs-jupiter.version>
         <jupiter.version>5.11.4</jupiter.version>
         <micrometer.version>1.14.5</micrometer.version>
-
+        <testcontainers.version>1.19.7</testcontainers.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <!-- testcontainers bom -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            
             <!-- arrow code bom-->
             <dependency>
                 <groupId>org.apache.arrow</groupId>
@@ -420,6 +429,11 @@
             <dependency>
                 <groupId>org.secretflow</groupId>
                 <artifactId>dataproxy-plugin-hive</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.secretflow</groupId>
+                <artifactId>dataproxy-plugin-dameng</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- dataproxy package end -->
