@@ -197,6 +197,7 @@ public abstract class AbstractDatabaseFlightProducer extends NoOpFlightProducer 
                     }
                     count += rowCount;
                 }
+                writer.flush();
                 ackStream.onCompleted();
                 writer.close();
                 log.info("put data over! all count: {}", count);

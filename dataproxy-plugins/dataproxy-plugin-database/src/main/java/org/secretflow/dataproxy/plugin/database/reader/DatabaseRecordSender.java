@@ -20,16 +20,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.secretflow.dataproxy.plugin.database.utils.Record;
 import org.secretflow.dataproxy.core.converter.*;
 import org.secretflow.dataproxy.core.reader.AbstractSender;
 import org.secretflow.dataproxy.core.visitor.*;
+import org.secretflow.dataproxy.plugin.database.utils.Record;
 
 import javax.annotation.Nonnull;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
 
 @Slf4j
@@ -41,6 +43,7 @@ public class DatabaseRecordSender extends AbstractSender<Record> {
     private final String tableName;
 
     private final DatabaseMetaData metaData;
+
     static {
         SmallIntVectorConverter smallIntVectorConverter = new SmallIntVectorConverter(new ShortValueVisitor(), null);
         TinyIntVectorConverter tinyIntVectorConverter = new TinyIntVectorConverter(new ByteValueVisitor(), smallIntVectorConverter);
@@ -52,12 +55,22 @@ public class DatabaseRecordSender extends AbstractSender<Record> {
 
         ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Int, intVectorConverter);
         ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Utf8, new VarCharVectorConverter(new ByteArrayValueVisitor()));
+        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.LargeUtf8, new LargeUtf8VectorConverter(new ByteArrayValueVisitor()));
+        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Binary, new BinaryVectorConverter(new ByteArrayValueVisitor()));
+        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.LargeBinary, new LargeBinaryVectorConverter(new ByteArrayValueVisitor()));
         ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.FloatingPoint, float8VectorConverter);
         ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Bool, new BitVectorConverter(new BooleanValueVisitor()));
         ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Date, new DateDayVectorConverter(new IntegerValueVisitor(), dateMilliVectorConverter));
-        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Time, new TimeMilliVectorConvertor(new IntegerValueVisitor(), null));
-        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Timestamp, new TimeStampNanoVectorConverter(new LongValueVisitor()));
+        // Chain TimeMicroVectorConvertor after TimeMilliVectorConvertor to support both Time32 and Time64
+        TimeMicroVectorConvertor timeMicroVectorConvertor = new TimeMicroVectorConvertor(new LongValueVisitor(), null);
+        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Time, new TimeMilliVectorConvertor(new IntegerValueVisitor(), timeMicroVectorConvertor));
+        // Chain TimeStampMicroVectorConverter after TimeStampMilliVectorConverter to support both millisecond and microsecond precision
+        TimeStampMicroVectorConverter timeStampMicroVectorConverter = new TimeStampMicroVectorConverter(new LongValueVisitor(), null);
+        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Timestamp, new TimeStampMilliVectorConverter(new LongValueVisitor(), timeStampMicroVectorConverter));
+        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Decimal, new Decimal128VectorConverter(new BigDecimalValueVisitor()));
+        ARROW_TYPE_ID_FIELD_CONSUMER_MAP.put(ArrowType.ArrowTypeID.Interval, new IntervalVectorConverter(new ObjectValueVisitor()));
     }
+
     /**
      * Constructor
      *
@@ -75,41 +88,32 @@ public class DatabaseRecordSender extends AbstractSender<Record> {
     @Override
     protected void toArrowVector(Record record, @Nonnull VectorSchemaRoot root, int takeRecordCount) {
         log.trace("record: {}, takeRecordCount: {}", record, takeRecordCount);
-        try {
-            this.initRecordColumn2FieldMap(metaData, tableName);
-            Optional<FieldVector> filedVectorOpt;
-            FieldVector vector;
-            ArrowType.ArrowTypeID arrowTypeID;
+        this.initRecordColumn2FieldMap();
 
-            Object recordColumnValue;
+        // Directly iterate Record's column data, Record column names match Schema column names
+        Map<String, Object> data = record.getData();
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            String columnName = entry.getKey();
+            Object recordColumnValue = entry.getValue();
 
-            ResultSet columns = metaData.getColumns(null, null, tableName, null);
-
-            while (columns.next()) {
-                String name = columns.getString("COLUMN_NAME");
-
-                filedVectorOpt = Optional.ofNullable(this.fieldVectorMap.get(name));
-
-                if (filedVectorOpt.isPresent()) {
-                    vector = filedVectorOpt.get();
-                    recordColumnValue = record.get(name);
-                    arrowTypeID = vector.getField().getType().getTypeID();
-                    if (Objects.isNull(recordColumnValue)) {
-                        vector.setNull(takeRecordCount);
-                        continue;
-                    }
-                    ValueConversionStrategy converter = ARROW_TYPE_ID_FIELD_CONSUMER_MAP.get(arrowTypeID);
-                    if (converter != null) {
-                        converter.convertAndSet(vector, takeRecordCount, recordColumnValue);
-                    } else {
-                        log.warn("No converter found for ArrowTypeID: {} (column: {})", arrowTypeID, name);
-                    }
-
-                }
+            FieldVector vector = this.fieldVectorMap.get(columnName);
+            if (vector == null) {
+                log.warn("Column {} not found in fieldVectorMap", columnName);
+                continue;
             }
-            columns.close();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+
+            if (Objects.isNull(recordColumnValue)) {
+                vector.setNull(takeRecordCount);
+                continue;
+            }
+
+            ArrowType.ArrowTypeID arrowTypeID = vector.getField().getType().getTypeID();
+            ValueConversionStrategy converter = ARROW_TYPE_ID_FIELD_CONSUMER_MAP.get(arrowTypeID);
+            if (converter != null) {
+                converter.convertAndSet(vector, takeRecordCount, recordColumnValue);
+            } else {
+                log.warn("No converter found for ArrowTypeID: {} (column: {})", arrowTypeID, columnName);
+            }
         }
     }
 
@@ -120,14 +124,16 @@ public class DatabaseRecordSender extends AbstractSender<Record> {
 
     @Override
     public void putOver() throws InterruptedException {
-        this.put(new Record());
+        Record lastRecord = new Record();
+        lastRecord.setLast(true);
+        this.put(lastRecord);
     }
 
     public boolean equalsIgnoreCase(String s1, String s2) {
         return s1 == null ? s2 == null : s1.equalsIgnoreCase(s2);
     }
 
-    private synchronized void initRecordColumn2FieldMap(DatabaseMetaData metaData, String tableName) throws SQLException {
+    private synchronized void initRecordColumn2FieldMap() {
         if (isInit) {
             return;
         }
@@ -137,25 +143,16 @@ public class DatabaseRecordSender extends AbstractSender<Record> {
         if (Objects.isNull(root)) {
             return;
         }
+
+        // Directly build column name to FieldVector mapping from VectorSchemaRoot
+        // Schema already contains correct column information (from ResultSetMetaData or DatabaseMetaData)
         List<FieldVector> fieldVectors = root.getFieldVectors();
-
-        ResultSet columns = metaData.getColumns(null, null, tableName, null);
-
-        Optional<FieldVector> first;
-
-        while (columns.next()) {
-            String name = columns.getString("COLUMN_NAME");
-
-            first = fieldVectors.stream()
-                    .filter(fieldVector -> equalsIgnoreCase(fieldVector.getName(), name))
-                    .findFirst();
-            if (first.isPresent()) {
-                fieldVectorMap.put(name, first.get());
-            } else {
-                log.debug("columnName: {} not in fieldVectors", name);
-            }
+        for (FieldVector fieldVector : fieldVectors) {
+            String columnName = fieldVector.getName();
+            fieldVectorMap.put(columnName, fieldVector);
+            log.trace("Mapped column: {} to FieldVector", columnName);
         }
-        columns.close();
+
         isInit = true;
     }
 }

@@ -40,15 +40,15 @@ public class DatabaseReader extends ArrowReader {
     @Override
     public boolean loadNextBatch() throws IOException {
         Optional.ofNullable(taskConfig.getError()).ifPresent(e -> {
-            log.error("TaskConfig is happened error: {}", e.getMessage());
-            throw new RuntimeException(e);
+            log.error("TaskConfig has an error: {}", e.getMessage(), e);
+            throw new RuntimeException("TaskConfig error: " + e.getMessage(), e);
         });
 
-        if(dbDoGetTaskContext == null) {
+        if (dbDoGetTaskContext == null) {
             prepare();
         }
 
-        if(dbDoGetTaskContext.hasNext()) {
+        if (dbDoGetTaskContext.hasNext()) {
             dbDoGetTaskContext.putNextPatchData();
             return true;
         }
