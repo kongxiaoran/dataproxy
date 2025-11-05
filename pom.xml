@@ -422,6 +422,11 @@
                 <artifactId>dataproxy-plugin-hive</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.secretflow</groupId>
+                <artifactId>dataproxy-plugin-dameng</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <!-- dataproxy package end -->
 
         </dependencies>
